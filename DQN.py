@@ -54,7 +54,6 @@ class DeepQNetwork:
         self.action_batch = None
         self.reward_batch = None
         self.non_final_next_states = None
-        self.action_next_batch = None
         self.expected_state_action_values = None
         self.state_action_values = None
 
@@ -97,7 +96,7 @@ class DeepQNetwork:
             return
 
         # 2.创建小批量数据
-        self.batch, self.state_batch, self.action_batch, self.reward_batch, self.non_final_next_states, self.action_next_batch \
+        self.batch, self.state_batch, self.action_batch, self.reward_batch, self.non_final_next_states \
             = self.make_mini_batch()
 
         # 3. 找到Q(s_t, a_t)作为监督信息
@@ -107,8 +106,8 @@ class DeepQNetwork:
         self.update_main_q_network()
 
         # 逐渐增加 epsilon, 降低行为的随机性
-        self.epsilon = self.epsilon + self.epsilon_increment if self.epsilon < self.epsilon_max else self.epsilon_max
-
+        # self.epsilon = self.epsilon + self.epsilon_increment if self.epsilon < self.epsilon_max else self.epsilon_max
+        self.epsilon *= 0.9998
         self.learn_step_counter += 1
 
     def make_mini_batch(self):
@@ -134,14 +133,11 @@ class DeepQNetwork:
         state_batch = torch.cat(batch.state)
         # state_batch = state_batch.view(state_dimension, -1)
         action_batch = torch.cat(batch.action)
-        action_batch = action_batch.view(-1, 5)
         reward_batch = torch.cat(batch.reward)
         non_final_next_states = torch.cat([s for s in batch.state_next
                                            if s is not None])
-        action_next_batch = torch.cat(batch.action_next)
-        action_next_batch = action_next_batch.view(-1, 5)
 
-        return batch, state_batch, action_batch, reward_batch, non_final_next_states, action_next_batch
+        return batch, state_batch, action_batch, reward_batch, non_final_next_states
 
     def get_expected_state_action_values(self):
         """
@@ -158,7 +154,7 @@ class DeepQNetwork:
         # [torch.FloatTensor of size BATCH_SIZEx2]变成了。
         # 为了求出与从这里执行的动作a_t对应的Q值，求出在action_batch中进行的行动a_t是向左还是向右的index
         # 用gather抽出与之对应的Q值。
-        self.state_action_values = self.main_q_network(self.state_batch).gather(1, self.action_batch[:, :1].long())
+        self.state_action_values = self.main_q_network(self.state_batch).gather(1, self.action_batch.long())
 
         # 3.3求max{Q(s_t+1, a)}值。但要注意是否有以下状态。
 
@@ -189,7 +185,7 @@ class DeepQNetwork:
 
         # self.epsilon = 0.5 * (1 / (self.epsilon + 1))
 
-        if self.epsilon > np.random.uniform():
+        if self.epsilon < np.random.uniform():
             self.main_q_network.eval()  # 将网络切换到推理模式
             with torch.no_grad():
                 action = self.main_q_network(state).max(1)[1]
@@ -198,7 +194,7 @@ class DeepQNetwork:
         else:
             # 随机返回动作
             action = torch.LongTensor([np.random.randint(0, self.n_actions)])
-        return action
+        return action.view(1, 1)
 
     def update_main_q_network(self):
         # 更新连接参数
